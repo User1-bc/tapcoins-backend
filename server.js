@@ -82,10 +82,9 @@ app.put('/v1/save/:playerId', (req, res) => {
     return res.status(400).json({ error: 'clock drift detected', serverTime });
   }
   const username = typeof usernameRaw === 'string' ? usernameRaw.slice(0, 32) : '';
-  const savedAt = Math.max(Number(recordSavedAt(playerId) || 0), clientTime);
-  saves[playerId] = { savedAt, serverTime, username, data };
+  saves[playerId] = { savedAt: serverTime, serverTime, username, data };
   markDirty();
-  res.json({ ok: true, savedAt, serverTime });
+  res.json({ ok: true, savedAt: serverTime, serverTime });
 });
 
 app.post('/v1/events', (req, res) => {
@@ -99,6 +98,11 @@ app.post('/v1/events', (req, res) => {
   fs.appendFileSync(EVENTS_FILE, line + '\n');
   res.json({ ok: true });
 });
+
+function recordSavedAt(playerId) {
+  const r = saves[playerId];
+  return r ? r.savedAt : 0;
+}
 
 function recordSavedAt(playerId) {
   const r = saves[playerId];
