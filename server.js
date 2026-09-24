@@ -1,6 +1,7 @@
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 
 const PORT = process.env.PORT || 8080;
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
@@ -99,6 +100,127 @@ app.post('/v1/events', (req, res) => {
   res.json({ ok: true });
 });
 
+const CARDS_FILE = path.join(DATA_DIR, 'cards.json');
+const MAX_CARD_ID = 5000;
+
+let cards = { serials: {}, players: {} };
+let cardsWritesPending = false;
+let cardsWriteTimer = null;
+
+function flushCards() {
+  cardsWritesPending = false;
+  const tmp = CARDS_FILE + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify(cards));
+  fs.renameSync(tmp, CARDS_FILE);
+}
+
+function markCardsDirty() {
+  if (cardsWritesPending) return;
+  cardsWritesPending = true;
+  clearTimeout(cardsWriteTimer);
+  cardsWriteTimer = setTimeout(flushCards, 300);
+}
+
+function loadCards() {
+  try {
+    if (!fs.existsSync(CARDS_FILE)) return;
+    cards = JSON.parse(fs.readFileSync(CARDS_FILE, 'utf8'));
+    cards.serials = cards.serials || {};
+    cards.players = cards.players || {};
+  } catch {
+    cards = { serials: {}, players: {} };
+  }
+}
+
+function newSerial() {
+  for (let i = 0; i < 50; i++) {
+    const s = 'TC-' + crypto.randomBytes(12).toString('hex').toUpperCase();
+    if (!cards.serials[s]) return s;
+  }
+  return 'TC-' + Date.now().toString(36).toUpperCase();
+}
+
+function validSerial(serial) {
+  return typeof serial === 'string' && /^[A-Z0-9-]{6,64}$/.test(serial);
+}
+
+function playerRec(playerId) {
+  if (!cards.players[playerId]) {
+    cards.players[playerId] = { claimed: [], owned: [] };
+  }
+  return cards.players[playerId];
+}
+
+app.post('/v1/card/claim', (req, res) => {
+  const body = req.body || {};
+  const { playerId, cardId } = body;
+  if (!validPlayerId(playerId)) return res.status(400).json({ error: 'bad playerId' });
+  if (!Number.isInteger(cardId) || cardId < 1 || cardId > MAX_CARD_ID) {
+    return res.status(400).json({ error: 'bad cardId' });
+  }
+  const p = playerRec(playerId);
+  if (p.claimed.includes(cardId)) {
+    return res.status(409).json({ error: 'ya_reclamada' });
+  }
+  const serial = newSerial();
+  cards.serials[serial] = { cardId, owner: playerId, status: 'owned' };
+  p.claimed.push(cardId);
+  p.owned.push(serial);
+  markCardsDirty();
+  res.json({ ok: true, serial });
+});
+
+app.post('/v1/card/give', (req, res) => {
+  const body = req.body || {};
+  const { playerId, serial } = body;
+  if (!validPlayerId(playerId)) return res.status(400).json({ error: 'bad playerId' });
+  if (!validSerial(serial)) return res.status(400).json({ error: 'bad serial' });
+  const rec = cards.serials[serial];
+  if (!rec) return res.status(404).json({ error: 'serie_invalida' });
+  if (rec.owner !== playerId) return res.status(403).json({ error: 'no_es_tuya' });
+  if (rec.status !== 'owned') return res.status(409).json({ error: 'ya_entregada' });
+  rec.status = 'pending';
+  const p = playerRec(playerId);
+  p.owned = p.owned.filter((s) => s !== serial);
+  markCardsDirty();
+  res.json({ ok: true });
+});
+
+app.post('/v1/card/redeem', (req, res) => {
+  const body = req.body || {};
+  const { playerId, serial } = body;
+  if (!validPlayerId(playerId)) return res.status(400).json({ error: 'bad playerId' });
+  if (!validSerial(serial)) return res.status(400).json({ error: 'bad serial' });
+  const rec = cards.serials[serial];
+  if (!rec) return res.status(404).json({ error: 'serie_invalida' });
+  if (rec.status !== 'pending') return res.status(409).json({ error: 'no_disponible' });
+  if (rec.owner === playerId) return res.status(409).json({ error: 'es_tuya' });
+  const p = playerRec(playerId);
+  if (p.claimed.includes(rec.cardId)) {
+    return res.status(409).json({ error: 'ya_reclamada' });
+  }
+  rec.owner = playerId;
+  rec.status = 'owned';
+  p.claimed.push(rec.cardId);
+  p.owned.push(serial);
+  markCardsDirty();
+  res.json({ ok: true, cardId: rec.cardId });
+});
+
+app.get('/v1/card/state/:playerId', (req, res) => {
+  const { playerId } = req.params;
+  if (!validPlayerId(playerId)) return res.status(400).json({ error: 'bad playerId' });
+  const p = playerRec(playerId);
+  res.json({
+    ok: true,
+    claimed: p.claimed,
+    owned: p.owned.map((serial) => ({
+      serial,
+      cardId: cards.serials[serial] ? cards.serials[serial].cardId : 0,
+    })).filter((o) => o.cardId > 0),
+  });
+});
+
 app.get('/privacidad', (_req, res) => {
   res.send(`<!DOCTYPE html>
 <html lang="es">
@@ -160,6 +282,7 @@ function recordSavedAt(playerId) {
 }
 
 loadSaves();
+loadCards();
 
 const server = app.listen(PORT, () => {
   console.log(`tapcoins-backend listening on :${PORT}`);
