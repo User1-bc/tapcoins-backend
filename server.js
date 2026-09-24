@@ -99,6 +99,56 @@ app.post('/v1/events', (req, res) => {
   res.json({ ok: true });
 });
 
+app.get('/privacidad', (_req, res) => {
+  res.send(`<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Política de Privacidad - TapCoins Idle</title>
+<style>
+  body{margin:0;background:#0f1626;color:#e6e6e6;font-family:'Segoe UI',Arial,sans-serif;line-height:1.6}
+  .wrap{max-width:720px;margin:0 auto;padding:32px 20px 60px}
+  h1{color:#ffd700;font-size:26px;margin-top:8px}
+  h2{color:#ffd700;font-size:18px;margin-top:28px}
+  p{font-size:15px;color:#d6d6d6}
+  .tag{display:inline-block;background:#1b2437;border:1px solid #ffd700;color:#ffd700;border-radius:8px;padding:4px 10px;font-size:13px}
+  footer{margin-top:40px;color:#888;font-size:12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="tag">TapCoins Idle</div>
+  <h1>Política de Privacidad</h1>
+  <p><strong>Última actualización:</strong> septiembre 2026</p>
+
+  <h2>Qué datos guardamos</h2>
+  <p>TapCoins Idle usa un <strong>nombre elegido por el jugador</strong> y una <strong>identificación anónima</strong> generada en el celular para sincronizar el progreso entre dispositivos. No pedimos correo, no pedimos contraseña y no publicamos el nombre de los jugadores.</p>
+
+  <h2>Menores de edad</h2>
+  <p>La app es apta para toda la familia. Si el jugador tiene menos de 13 años, sus padres o tutores deben revisar estas condiciones y acompañarlo mientras juega.</p>
+
+  <h2>No compartimos tus datos</h2>
+  <p>Tus datos se usan únicamente para guardar tu partida entre dispositivos. No se venden ni se comparten con terceros publicitarios.</p>
+
+  <h2>Compras dentro de la app</h2>
+  <p>Las compras de monedas se procesan por Google Play. TapCoins Idle no ve el método de pago. Las compras se gestionan según las políticas de reembolso de Google.</p>
+
+  <h2>Notificaciones y sonido</h2>
+  <p>Las notificaciones y el sonido se generan en el propio celular y se pueden desactivar desde el menú Misiones dentro de la app.</p>
+
+  <h2>Borrar tus datos</h2>
+  <p>El jugador puede borrar su progreso en cualquier momento desde Privacidad y términos en la app (botón "Borrar mi progreso").</p>
+
+  <h2>Contacto</h2>
+  <p>Para cualquier pregunta o pedido de borrado de datos, escribí a: <strong>bcarvjal1129@gmail.com</strong></p>
+
+  <footer>TapCoins Idle - hecho en RD 🇩🇴</footer>
+</div>
+</body>
+</html>`);
+});
+
 function recordSavedAt(playerId) {
   const r = saves[playerId];
   return r ? r.savedAt : 0;
