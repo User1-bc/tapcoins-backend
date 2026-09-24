@@ -207,6 +207,29 @@ app.post('/v1/card/redeem', (req, res) => {
   res.json({ ok: true, cardId: rec.cardId });
 });
 
+app.post('/v1/card/migrate', (req, res) => {
+  const body = req.body || {};
+  const { fromId, toId } = body;
+  if (!validPlayerId(fromId) || !validPlayerId(toId)) {
+    return res.status(400).json({ error: 'bad playerId' });
+  }
+  if (fromId === toId) return res.json({ ok: true, moved: 0 });
+  const from = cards.players[fromId];
+  if (!from) return res.json({ ok: true, moved: 0 });
+  const to = playerRec(toId);
+  for (const serial of from.owned) {
+    const rec = cards.serials[serial];
+    if (rec) rec.owner = toId;
+    if (!to.owned.includes(serial)) to.owned.push(serial);
+  }
+  for (const cardId of from.claimed) {
+    if (!to.claimed.includes(cardId)) to.claimed.push(cardId);
+  }
+  delete cards.players[fromId];
+  markCardsDirty();
+  res.json({ ok: true, moved: from.owned.length });
+});
+
 app.get('/v1/card/state/:playerId', (req, res) => {
   const { playerId } = req.params;
   if (!validPlayerId(playerId)) return res.status(400).json({ error: 'bad playerId' });
@@ -245,7 +268,7 @@ app.get('/privacidad', (_req, res) => {
   <p><strong>Última actualización:</strong> septiembre 2026</p>
 
   <h2>Qué datos guardamos</h2>
-  <p>TapCoins Idle usa un <strong>nombre elegido por el jugador</strong> y una <strong>identificación anónima</strong> generada en el celular para sincronizar el progreso entre dispositivos. No pedimos correo, no pedimos contraseña y no publicamos el nombre de los jugadores.</p>
+  <p>TapCoins Idle usa un <strong>nombre elegido por el jugador</strong> y una <strong>identificación anónima</strong> generada en el celular para sincronizar el progreso entre dispositivos. Si el jugador lo desea, puede <strong>conectar su cuenta de Google</strong> para conservar su progreso entre teléfonos; en ese caso guardamos únicamente su identificación de Google, su nombre y su correo (el correo nunca se publica). No pedimos contraseña.</p>
 
   <h2>Menores de edad</h2>
   <p>La app es apta para toda la familia. Si el jugador tiene menos de 13 años, sus padres o tutores deben revisar estas condiciones y acompañarlo mientras juega.</p>
