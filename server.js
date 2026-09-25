@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { attachArena, arenaStateFor } = require('./lib/arena');
+const leaderboard = require('./lib/leaderboard');
 
 const PORT = process.env.PORT || 8080;
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
@@ -52,7 +53,12 @@ function validPlayerId(id) {
 }
 
 app.get('/health', (_req, res) => {
-  res.json({ ok: true, time: Date.now(), players: Object.keys(saves).length });
+  res.json({
+    ok: true,
+    time: Date.now(),
+    players: Object.keys(saves).length,
+    leaderboard: leaderboard.stats(),
+  });
 });
 
 app.get('/v1/save/:playerId', (req, res) => {
@@ -85,8 +91,34 @@ app.put('/v1/save/:playerId', (req, res) => {
   }
   const username = typeof usernameRaw === 'string' ? usernameRaw.slice(0, 32) : '';
   saves[playerId] = { savedAt: serverTime, serverTime, username, data };
+  leaderboard.upsertFromSave(playerId, username, data);
   markDirty();
   res.json({ ok: true, savedAt: serverTime, serverTime });
+});
+
+app.get('/v1/leaderboard', (req, res) => {
+  const month = leaderboard.isValidMonth(req.query.month) ? req.query.month : leaderboard.currentMonth();
+  const me = validPlayerId(req.query.me) ? req.query.me : '';
+  res.json({
+    ok: true,
+    month,
+    previousMonth: leaderboard.previousMonth(),
+    entries: leaderboard.ranking(month, req.query.limit, me),
+  });
+});
+
+app.get('/v1/leaderboard/podium', (req, res) => {
+  const month = leaderboard.isValidMonth(req.query.month) ? req.query.month : leaderboard.previousMonth();
+  res.json({ ok: true, month, entries: leaderboard.podium(month) });
+});
+
+app.post('/v1/leaderboard/claim', (req, res) => {
+  const body = req.body || {};
+  const { playerId, month } = body;
+  if (!validPlayerId(playerId)) return res.status(400).json({ error: 'bad playerId' });
+  const result = leaderboard.claim(playerId, month);
+  if (!result.ok) return res.status(200).json(result);
+  res.json(result);
 });
 
 app.post('/v1/events', (req, res) => {
@@ -257,7 +289,7 @@ app.get('/privacidad', (_req, res) => {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Política de Privacidad - TapCoins Idle</title>
+<title>Política de Privacidad - Drag Master Royale</title>
 <style>
   body{margin:0;background:#0f1626;color:#e6e6e6;font-family:'Segoe UI',Arial,sans-serif;line-height:1.6}
   .wrap{max-width:720px;margin:0 auto;padding:32px 20px 60px}
@@ -270,21 +302,24 @@ app.get('/privacidad', (_req, res) => {
 </head>
 <body>
 <div class="wrap">
-  <div class="tag">TapCoins Idle</div>
+  <div class="tag">Drag Master Royale</div>
   <h1>Política de Privacidad</h1>
   <p><strong>Última actualización:</strong> septiembre 2026</p>
 
   <h2>Qué datos guardamos</h2>
-  <p>TapCoins Idle usa un <strong>nombre elegido por el jugador</strong> y una <strong>identificación anónima</strong> generada en el celular para sincronizar el progreso entre dispositivos. Si el jugador lo desea, puede <strong>conectar su cuenta de Google</strong> para conservar su progreso entre teléfonos; en ese caso guardamos únicamente su identificación de Google, su nombre y su correo (el correo nunca se publica). No pedimos contraseña.</p>
+  <p>Drag Master Royale usa un <strong>nombre elegido por el jugador</strong> y una <strong>identificación anónima</strong> generada en el celular para sincronizar el progreso entre dispositivos. Si el jugador lo desea, puede <strong>conectar su cuenta de Google</strong> para conservar su progreso entre teléfonos; en ese caso guardamos únicamente su identificación de Google, su nombre y su correo (el correo nunca se publica). No pedimos contraseña.</p>
+
+  <h2>Ranking mensual</h2>
+  <p>El ranking mensual muestra únicamente <strong>nombres de jugadores y sus puntos de prestigio</strong>. No se publican correos, identificaciones del dispositivo ni ningún dato de la partida. Los puntos los calcula el servidor a partir de la partida guardada, no el teléfono. Si no quieres aparecer en el ranking, no juegues nunca: basta con no ganar prestigio en el mes en curso.</p>
 
   <h2>Menores de edad</h2>
   <p>La app es apta para toda la familia. Si el jugador tiene menos de 13 años, sus padres o tutores deben revisar estas condiciones y acompañarlo mientras juega.</p>
 
   <h2>No compartimos tus datos</h2>
-  <p>Tus datos se usan únicamente para guardar tu partida entre dispositivos. No se venden ni se comparten con terceros publicitarios.</p>
+  <p>Tus datos se usan únicamente para guardar tu partida entre dispositivos y para el ranking. No se venden ni se comparten con terceros publicitarios.</p>
 
   <h2>Compras dentro de la app</h2>
-  <p>Las compras de monedas se procesan por Google Play. TapCoins Idle no ve el método de pago. Las compras se gestionan según las políticas de reembolso de Google.</p>
+  <p>Las compras de monedas se procesan por Google Play. Drag Master Royale no ve el método de pago. Las compras se gestionan según las políticas de reembolso de Google.</p>
 
   <h2>Notificaciones y sonido</h2>
   <p>Las notificaciones y el sonido se generan en el propio celular y se pueden desactivar desde el menú Misiones dentro de la app.</p>
@@ -295,7 +330,7 @@ app.get('/privacidad', (_req, res) => {
   <h2>Contacto</h2>
   <p>Para cualquier pregunta o pedido de borrado de datos, escribí a: <strong>bcarvjal1129@gmail.com</strong></p>
 
-  <footer>TapCoins Idle - hecho en RD 🇩🇴</footer>
+  <footer>Drag Master Royale - hecho en RD 🇩🇴</footer>
 </div>
 </body>
 </html>`);
@@ -313,6 +348,7 @@ function recordSavedAt(playerId) {
 
 loadSaves();
 loadCards();
+leaderboard.load();
 
 const server = app.listen(PORT, () => {
   console.log(`tapcoins-backend listening on :${PORT}`);
@@ -328,6 +364,7 @@ const server = app.listen(PORT, () => {
 process.on('SIGTERM', () => {
   clearTimeout(writeTimer);
   if (writesPending) flushSaves();
+  leaderboard.flushNow();
   const { flushArena } = require('./lib/arena');
   flushArena();
   server.close(() => process.exit(0));
