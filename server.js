@@ -2,6 +2,7 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { attachArena, arenaStateFor } = require('./lib/arena');
 
 const PORT = process.env.PORT || 8080;
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
@@ -244,6 +245,12 @@ app.get('/v1/card/state/:playerId', (req, res) => {
   });
 });
 
+app.get('/v1/arena/state/:playerId', (req, res) => {
+  const { playerId } = req.params;
+  if (!validPlayerId(playerId)) return res.status(400).json({ error: 'bad playerId' });
+  res.json({ ok: true, ...arenaStateFor(playerId) });
+});
+
 app.get('/privacidad', (_req, res) => {
   res.send(`<!DOCTYPE html>
 <html lang="es">
@@ -309,10 +316,19 @@ loadCards();
 
 const server = app.listen(PORT, () => {
   console.log(`tapcoins-backend listening on :${PORT}`);
+  attachArena(server, {
+    saves,
+    cards,
+    validPlayerId,
+    markSaveDirty: markDirty,
+    markCardsDirty,
+  });
 });
 
 process.on('SIGTERM', () => {
   clearTimeout(writeTimer);
   if (writesPending) flushSaves();
+  const { flushArena } = require('./lib/arena');
+  flushArena();
   server.close(() => process.exit(0));
 });
