@@ -94,10 +94,21 @@ const PID = 'test-' + 'a1b2c3d4e5f6';
       await wait(200);
     }
   }
-  let msgs = events.filter((e) => e.t === 'battle_state');
+  if (!Array.isArray(matched.combos) || matched.combos.length !== 2) {
+    return fail('missing combos: ' + JSON.stringify(matched.combos));
+  }
+  for (const team of matched.teams) {
+    for (const c of team) {
+      for (const f of ['role', 'trait', 'element', 'traitPro', 'traitContra']) {
+        if (!c.stats || c.stats[f] === undefined) return fail('missing stat ' + f);
+      }
+    }
+  }
+  const msgs = events.filter((e) => e.t === 'battle_state');
   if (msgs.length) {
-    const dmg = matched.teams[0][0].stats.hp - msgs[0].hp[0][0];
-    if (dmg < 0) return fail('attacker took damage? hp went ' + dmg);
+    // Con espinas y robo de vida el HP puede ir en ambos sentidos.
+    if (typeof msgs[0].hp[0][0] !== 'number') return fail('bad hp state');
+    if (!msgs[0].log.length) return fail('expected log lines');
   }
   const result = events.find((e) => e.t === 'battle_result');
   if (!result) return fail('expected battle_result');
